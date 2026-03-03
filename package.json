@@ -1,7 +1,8 @@
 {
-  "name": "react-filter",
+  "name": "react-use-filter",
   "version": "0.1.0",
   "description": "Headless React filtering hook with full TypeScript inference",
+  "keywords": ["react", "filter", "filtering", "headless", "hooks", "typescript"],
   "license": "MIT",
   "type": "module",
   "exports": {
