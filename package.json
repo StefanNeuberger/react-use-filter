@@ -1,9 +1,20 @@
 {
-  "name": "react-use-filter",
+  "name": "@hanshase/react-use-filter",
   "version": "0.1.0",
   "description": "Headless React filtering hook with full TypeScript inference",
-  "keywords": ["react", "filter", "filtering", "headless", "hooks", "typescript"],
+  "keywords": [
+    "react",
+    "filter",
+    "filtering",
+    "headless",
+    "hooks",
+    "typescript"
+  ],
   "license": "MIT",
+  "repository": "github:StefanNeuberger/react-use-filter",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -46,6 +57,8 @@
     "vitest": "^3.0.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

@@ -1,17 +1,18 @@
-# react-use-filter
+# @hanshase/react-use-filter
 
 Headless React filtering hook with full TypeScript inference.
+Source: [GitHub](https://github.com/StefanNeuberger/react-use-filter)
 Composable, zero-UI filtering for any dataset — sync and async filters in one simple API,
 inspired by the headless pattern of TanStack Table.
 
 ## Installation
 
 ```bash
-npm install react-use-filter
+npm install @hanshase/react-use-filter
 # or
-pnpm add react-use-filter
+pnpm add @hanshase/react-use-filter
 # or
-yarn add react-use-filter
+yarn add @hanshase/react-use-filter
 ```
 
 **Requires React ≥ 18.**
@@ -19,7 +20,7 @@ yarn add react-use-filter
 ## Basic usage
 
 ```tsx
-import { useFilter, createFilterDefs, filterFns } from 'react-use-filter';
+import { useFilter, createFilterDefs, filterFns } from '@hanshase/react-use-filter';
 
 type Person = { name: string; age: number; status: string };
 
@@ -168,7 +169,7 @@ import type {
   ActiveFilters,   // Partial<FilterValueMap<TDefs>>
   UseFilterOptions,
   UseFilterReturn,
-} from 'react-use-filter';
+} from '@hanshase/react-use-filter';
 ```
 
 ## License
