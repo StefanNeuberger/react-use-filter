@@ -91,6 +91,8 @@ const {
 
 All active filters compose with **AND** logic. An absent key means the filter is inactive.
 
+**Filter logic:** A row is included only if it passes **every** active filter (sync and async). There is no built-in OR mode — for OR behavior, combine conditions in a single filter function.
+
 ---
 
 ### `createFilterDefs<TData>()`
