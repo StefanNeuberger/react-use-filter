@@ -1,6 +1,7 @@
 # @hanshase/react-use-filter
 
 Headless React filtering hook with full TypeScript inference.
+Source: [GitHub](https://github.com/StefanNeuberger/react-use-filter)
 Composable, zero-UI filtering for any dataset — sync and async filters in one simple API,
 inspired by the headless pattern of TanStack Table.
 

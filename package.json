@@ -11,6 +11,7 @@
     "typescript"
   ],
   "license": "MIT",
+  "repository": "github:StefanNeuberger/react-use-filter",
   "type": "module",
   "exports": {
     ".": {
