@@ -12,6 +12,9 @@
   ],
   "license": "MIT",
   "repository": "github:StefanNeuberger/react-use-filter",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "exports": {
     ".": {
