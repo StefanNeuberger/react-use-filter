@@ -19,9 +19,9 @@ function isAsyncFn(fn: unknown): boolean {
  * Headless filtering hook — supports both synchronous and async (API) filters
  * in a single filterDefs object.
  *
- * All active filters compose with AND logic:
- *  1. Sync filters run first (useMemo, instant).
- *  2. Async filters receive the sync-filtered result and run sequentially (useEffect).
+ * Active filters compose according to `filterMode` (default: `'and'`):
+ *  - `'and'`: a row must pass every active filter (sync then async, sequentially).
+ *  - `'or'`: a row is included if it passes any active filter (async runs in parallel, results unioned).
  *
  * Async functions (declared with `async`) are detected automatically at runtime.
  * No need to separate them into a second prop.
@@ -55,7 +55,7 @@ function isAsyncFn(fn: unknown): boolean {
 export function useFilter<TData, TDefs extends FilterDefs<TData>>(
   options: UseFilterOptions<TData, TDefs>,
 ): UseFilterReturn<TData, TDefs> {
-  const { data, filterDefs } = options;
+  const { data, filterDefs, filterMode = 'and' } = options;
 
   const [filters, setFiltersState] = useState<ActiveFilters<TDefs>>({});
   const [asyncResult, setAsyncResult] = useState<TData[] | null>(null);
@@ -77,14 +77,15 @@ export function useFilter<TData, TDefs extends FilterDefs<TData>>(
     // Fast path: no active sync filters → return original array reference.
     if (syncEntries.length === 0) return data;
 
+    const combineSync = filterMode === 'or' ? 'some' : 'every';
     return data.filter((row) =>
-      syncEntries.every(([key, value]) => {
+      syncEntries[combineSync](([key, value]) => {
         const fn = filterDefs[key];
-        if (!fn || isAsyncFn(fn)) return true; // pass row if key is stale
+        if (!fn || isAsyncFn(fn)) return filterMode !== 'or'; // AND: skip stale (true); OR: no contribution (false)
         return (fn as (row: TData, value: unknown) => boolean)(row, value);
       }),
     );
-  }, [data, filterDefs, filters]);
+  }, [data, filterDefs, filters, filterMode]);
 
   // ── Phase 2: async filtering ─────────────────────────────────────────────
   useEffect(() => {
@@ -119,12 +120,29 @@ export function useFilter<TData, TDefs extends FilterDefs<TData>>(
 
     void (async () => {
       try {
-        let result = syncFiltered;
-        for (const [key, value] of asyncEntries) {
-          const fn = filterDefs[key];
-          if (!fn) continue; // handles noUncheckedIndexedAccess; pass rows on stale key
-          result = await (fn as (rows: TData[], value: unknown) => Promise<TData[]>)(result, value);
-          if (cancelled) return; // check after each await for mid-chain cancellation
+        let result: TData[];
+        if (filterMode === 'or') {
+          // Each async filter runs on the full dataset independently (true OR semantics),
+          // then results are unioned preserving original data order.
+          const results = await Promise.all(
+            asyncEntries.map(([key, value]) => {
+              const fn = filterDefs[key];
+              if (!fn) return Promise.resolve([] as TData[]);
+              return (fn as (rows: TData[], value: unknown) => Promise<TData[]>)(data, value);
+            }),
+          );
+          if (cancelled) return;
+          const matchingSet = new Set(results.flat());
+          result = data.filter((row) => matchingSet.has(row)); // preserves original order
+        } else {
+          // AND: sequential pipeline — each async filter narrows further
+          result = syncFiltered;
+          for (const [key, value] of asyncEntries) {
+            const fn = filterDefs[key];
+            if (!fn) continue; // handles noUncheckedIndexedAccess; pass rows on stale key
+            result = await (fn as (rows: TData[], value: unknown) => Promise<TData[]>)(result, value);
+            if (cancelled) return; // check after each await for mid-chain cancellation
+          }
         }
         setAsyncResult(result);
         setIsLoading(false);
@@ -139,12 +157,25 @@ export function useFilter<TData, TDefs extends FilterDefs<TData>>(
     return () => {
       cancelled = true;
     };
-  }, [syncFiltered, filterDefs, filters]);
+  }, [syncFiltered, filterDefs, filters, filterMode]);
 
   // ── Final result ─────────────────────────────────────────────────────────
-  // asyncResult is null when: no async filters active, or syncFiltered just changed.
-  // In both cases falling back to syncFiltered is correct.
-  const filteredData = asyncResult ?? syncFiltered;
+  const filteredData = useMemo<TData[]>(() => {
+    if (filterMode === 'or' && asyncResult !== null) {
+      // In OR mode: union sync-matched rows and async-matched rows, preserving data order.
+      // When no sync filters are active, syncFiltered === data (fast path) — in that case
+      // the async result alone is the answer (union with full data would return everything).
+      if (syncFiltered !== data) {
+        const syncSet = new Set(syncFiltered);
+        const asyncSet = new Set(asyncResult);
+        return data.filter((row) => syncSet.has(row) || asyncSet.has(row));
+      }
+      return asyncResult;
+    }
+    // AND mode (or no async active): asyncResult is null when no async filters are active,
+    // in which case syncFiltered is correct.
+    return asyncResult ?? syncFiltered;
+  }, [data, syncFiltered, asyncResult, filterMode]);
 
   const isFiltered = Object.keys(filters).length > 0;
 

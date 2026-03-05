@@ -81,11 +81,17 @@ export type UseFilterOptions<TData, TDefs extends FilterDefs<TData>> = {
    * Use createFilterDefs<TData>() to avoid per-function row type annotations.
    */
   filterDefs: TDefs;
+  /**
+   * Controls how multiple active filters are composed.
+   * - `'and'` (default): a row must pass **every** active filter.
+   * - `'or'`: a row is included if it passes **any** active filter.
+   */
+  filterMode?: 'and' | 'or';
 };
 
 /** Everything returned by useFilter. */
 export type UseFilterReturn<TData, TDefs extends FilterDefs<TData>> = {
-  /** Subset of data passing all active filters (sync and async). */
+  /** Subset of data passing the active filters according to the current `filterMode`. */
   filteredData: TData[];
 
   /**

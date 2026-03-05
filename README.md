@@ -71,7 +71,7 @@ The main hook. Returns filtered data and controls.
 
 ```ts
 const {
-  filteredData,    // TData[] — rows that pass all active filters
+  filteredData,    // TData[] — rows that pass the active filters
   setFilter,       // (key, value) => void — activate or update a filter
   resetFilter,     // (key) => void        — remove a single filter
   resetAllFilters, // () => void           — remove all filters
@@ -88,10 +88,21 @@ const {
 |---|---|---|
 | `data` | `TData[]` | The full dataset to filter |
 | `filterDefs` | `FilterDefs<TData>` | Filter functions (sync and/or async). Define outside the component or wrap in `useMemo` — the hook uses object identity to detect changes. |
+| `filterMode` | `'and' \| 'or'` | How active filters compose. `'and'` (default): a row must pass **every** filter. `'or'`: a row passes if it matches **any** filter. |
 
-All active filters compose with **AND** logic. An absent key means the filter is inactive.
+An absent key means the filter is inactive.
 
-**Filter logic:** A row is included only if it passes **every** active filter (sync and async). There is no built-in OR mode — for OR behavior, combine conditions in a single filter function.
+**OR mode example:**
+
+```tsx
+const [filterMode, setFilterMode] = useState<'and' | 'or'>('and');
+const { filteredData } = useFilter({ data: people, filterDefs, filterMode });
+
+// Toggle between AND / OR at runtime
+<button onClick={() => setFilterMode(m => m === 'and' ? 'or' : 'and')}>
+  Mode: {filterMode.toUpperCase()}
+</button>
+```
 
 ---
 
