@@ -71,7 +71,7 @@ The main hook. Returns filtered data and controls.
 
 ```ts
 const {
-  filteredData,    // TData[] — rows that pass the active filters
+  filteredData,    // TData[] — rows that pass the active filters according to filterMode (e.g. all in 'and', any in 'or')
   setFilter,       // (key, value) => void — activate or update a filter
   resetFilter,     // (key) => void        — remove a single filter
   resetAllFilters, // () => void           — remove all filters
