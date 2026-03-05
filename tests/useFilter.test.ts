@@ -260,7 +260,7 @@ describe('useFilter — async filters', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it('filterError is set when async filter throws', async () => {
+  it('filterError is set when async filter throws (AND mode)', async () => {
     const mixedFilterDefs = {
       ...filterDefs,
       authorized: async (_rows: Person[], _value: string): Promise<Person[]> => {
@@ -286,7 +286,7 @@ describe('useFilter — async filters', () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it('resetFilter clears async result and isLoading', async () => {
+  it('resetFilter clears async result and isLoading (AND mode)', async () => {
     const mixedFilterDefs = {
       ...filterDefs,
       authorized: async (rows: Person[], _value: string) =>
@@ -311,5 +311,193 @@ describe('useFilter — async filters', () => {
     expect(result.current.filteredData).toEqual(data);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.isFiltered).toBe(false);
+  });
+});
+
+// ─── OR filter mode ───────────────────────────────────────────────────────────
+
+describe('useFilter — OR mode (sync)', () => {
+  it('single filter in OR mode behaves the same as AND', () => {
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs, filterMode: 'or' }),
+    );
+    act(() => {
+      result.current.setFilter('status', 'active');
+    });
+    // Alice and Carol are active
+    expect(result.current.filteredData).toHaveLength(2);
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Alice');
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Carol');
+  });
+
+  it('two filters in OR mode returns rows matching either filter', () => {
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs, filterMode: 'or' }),
+    );
+    act(() => {
+      // name includes 'alice' → Alice; status === 'inactive' → Bob
+      result.current.setFilter('name', 'alice');
+      result.current.setFilter('status', 'inactive');
+    });
+    expect(result.current.filteredData).toHaveLength(2);
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Alice');
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Bob');
+  });
+
+  it('OR mode preserves original data order', () => {
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs, filterMode: 'or' }),
+    );
+    act(() => {
+      result.current.setFilter('name', 'carol');
+      result.current.setFilter('status', 'inactive'); // Bob
+    });
+    // Original order: Alice, Bob, Carol → Bob then Carol
+    expect(result.current.filteredData.map((r) => r.name)).toEqual(['Bob', 'Carol']);
+  });
+
+  it('OR mode returns empty when no rows pass any filter', () => {
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs, filterMode: 'or' }),
+    );
+    act(() => {
+      result.current.setFilter('name', 'xyz');
+      result.current.setFilter('status', 'pending');
+    });
+    expect(result.current.filteredData).toHaveLength(0);
+  });
+
+  it('OR mode with two filters each matching a different row excludes rows matching neither', () => {
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs, filterMode: 'or' }),
+    );
+    act(() => {
+      result.current.setFilter('name', 'alice'); // matches Alice
+      result.current.setFilter('age', { max: 20 }); // matches Bob (17)
+    });
+    // Alice via name, Bob via age — Carol matches neither
+    expect(result.current.filteredData).toHaveLength(2);
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Alice');
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Bob');
+    expect(result.current.filteredData.map((r) => r.name)).not.toContain('Carol');
+  });
+});
+
+describe('useFilter — OR mode (async)', () => {
+  it('two async filters in OR mode run in parallel and union results', async () => {
+    const orAsyncDefs = {
+      byAlice: async (rows: Person[], _v: string) => rows.filter((r) => r.name === 'Alice'),
+      byCarol: async (rows: Person[], _v: string) => rows.filter((r) => r.name === 'Carol'),
+    };
+
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs: orAsyncDefs, filterMode: 'or' }),
+    );
+
+    await act(async () => {
+      result.current.setFilter('byAlice', 'x');
+      result.current.setFilter('byCarol', 'x');
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.filteredData).toHaveLength(2);
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Alice');
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Carol');
+  });
+
+  it('changing a sync filter does not re-trigger async filters (Bug 2 regression)', async () => {
+    let asyncCallCount = 0;
+    const orDefs = {
+      ...filterDefs,
+      byActive: async (rows: Person[], _v: string) => {
+        asyncCallCount++;
+        return rows.filter((r) => r.status === 'active');
+      },
+    };
+
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs: orDefs, filterMode: 'or' }),
+    );
+
+    await act(async () => {
+      result.current.setFilter('byActive', 'x');
+    });
+    expect(asyncCallCount).toBe(1);
+
+    // Toggle a sync filter — must NOT cause a second async call
+    await act(async () => {
+      result.current.setFilter('name', 'alice');
+    });
+    expect(asyncCallCount).toBe(1);
+
+    // Change the sync filter value again — still no extra async call
+    await act(async () => {
+      result.current.setFilter('name', 'carol');
+    });
+    expect(asyncCallCount).toBe(1);
+  });
+
+  it('changing a sync filter does not flash the async result away (Bug 1 regression)', async () => {
+    const orDefs = {
+      ...filterDefs,
+      byActive: async (rows: Person[], _v: string) =>
+        rows.filter((r) => r.status === 'active'), // Alice, Carol
+    };
+
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs: orDefs, filterMode: 'or' }),
+    );
+
+    await act(async () => {
+      result.current.setFilter('byActive', 'x');
+    });
+    // Async result: Alice + Carol
+    expect(result.current.filteredData).toHaveLength(2);
+
+    // Add a sync filter (Bob by name) — union should now be all 3
+    await act(async () => {
+      result.current.setFilter('name', 'bob');
+    });
+    expect(result.current.filteredData).toHaveLength(3);
+    expect(result.current.isLoading).toBe(false); // no spurious loading state
+
+    // Change sync filter — async result must still be present (no flash to empty)
+    await act(async () => {
+      result.current.setFilter('name', 'carol');
+    });
+    // sync: Carol; async: Alice + Carol → union = Alice + Carol (2)
+    expect(result.current.filteredData).toHaveLength(2);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it('OR async filters receive the full dataset and results are unioned with sync matches', async () => {
+    const receivedRows: Person[][] = [];
+    const mixedOrDefs = {
+      ...filterDefs,
+      byAlice: async (rows: Person[], _v: string) => {
+        receivedRows.push(rows);
+        return rows.filter((r) => r.name === 'Alice');
+      },
+    };
+
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs: mixedOrDefs, filterMode: 'or' }),
+    );
+
+    // Sync filter (OR): status === 'active' → Alice, Carol
+    // Async filter runs on full data (true OR semantics — can match rows sync missed)
+    act(() => {
+      result.current.setFilter('status', 'active');
+    });
+    await act(async () => {
+      result.current.setFilter('byAlice', 'x');
+    });
+
+    // Async receives all rows (full dataset), not just sync-filtered rows
+    expect(receivedRows[0]).toHaveLength(3);
+    // Final: union of sync-OR matches (Alice, Carol) and async-OR matches (Alice) = Alice + Carol
+    expect(result.current.filteredData).toHaveLength(2);
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Alice');
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Carol');
   });
 });
