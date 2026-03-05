@@ -410,6 +410,71 @@ describe('useFilter — OR mode (async)', () => {
     expect(result.current.filteredData.map((r) => r.name)).toContain('Carol');
   });
 
+  it('changing a sync filter does not re-trigger async filters (Bug 2 regression)', async () => {
+    let asyncCallCount = 0;
+    const orDefs = {
+      ...filterDefs,
+      byActive: async (rows: Person[], _v: string) => {
+        asyncCallCount++;
+        return rows.filter((r) => r.status === 'active');
+      },
+    };
+
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs: orDefs, filterMode: 'or' }),
+    );
+
+    await act(async () => {
+      result.current.setFilter('byActive', 'x');
+    });
+    expect(asyncCallCount).toBe(1);
+
+    // Toggle a sync filter — must NOT cause a second async call
+    await act(async () => {
+      result.current.setFilter('name', 'alice');
+    });
+    expect(asyncCallCount).toBe(1);
+
+    // Change the sync filter value again — still no extra async call
+    await act(async () => {
+      result.current.setFilter('name', 'carol');
+    });
+    expect(asyncCallCount).toBe(1);
+  });
+
+  it('changing a sync filter does not flash the async result away (Bug 1 regression)', async () => {
+    const orDefs = {
+      ...filterDefs,
+      byActive: async (rows: Person[], _v: string) =>
+        rows.filter((r) => r.status === 'active'), // Alice, Carol
+    };
+
+    const { result } = renderHook(() =>
+      useFilter({ data, filterDefs: orDefs, filterMode: 'or' }),
+    );
+
+    await act(async () => {
+      result.current.setFilter('byActive', 'x');
+    });
+    // Async result: Alice + Carol
+    expect(result.current.filteredData).toHaveLength(2);
+
+    // Add a sync filter (Bob by name) — union should now be all 3
+    await act(async () => {
+      result.current.setFilter('name', 'bob');
+    });
+    expect(result.current.filteredData).toHaveLength(3);
+    expect(result.current.isLoading).toBe(false); // no spurious loading state
+
+    // Change sync filter — async result must still be present (no flash to empty)
+    await act(async () => {
+      result.current.setFilter('name', 'carol');
+    });
+    // sync: Carol; async: Alice + Carol → union = Alice + Carol (2)
+    expect(result.current.filteredData).toHaveLength(2);
+    expect(result.current.isLoading).toBe(false);
+  });
+
   it('OR async filters receive the full dataset and results are unioned with sync matches', async () => {
     const receivedRows: Person[][] = [];
     const mixedOrDefs = {

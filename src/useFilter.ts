@@ -66,22 +66,30 @@ export function useFilter<TData, TDefs extends FilterDefs<TData>>(
   // whether the sync dataset changed (vs only async filter values changing).
   const prevSyncFilteredRef = useRef<TData[] | null>(null);
 
+  // OR-mode: track whether the inputs that actually feed the async phase changed.
+  // If only syncFiltered changed (a sync filter was toggled), OR-async result is still
+  // valid — data didn't change and async filter state didn't change.
+  const prevDataRef = useRef<TData[] | null>(null);
+  const prevAsyncKeyRef = useRef<string>('');
+
   // ── Phase 1: sync filtering ──────────────────────────────────────────────
   // Only considers keys whose filterDef is a sync (non-async) function.
   const syncFiltered = useMemo<TData[]>(() => {
+    // Only keep entries with a valid, non-async filterDef — stale keys (removed from
+    // filterDefs) are dropped here so the fast-path check below reflects reality.
     const syncEntries = (Object.entries(filters) as [string, unknown][]).filter(([k]) => {
       const fn = filterDefs[k];
       return fn !== undefined && !isAsyncFn(fn);
     });
 
-    // Fast path: no active sync filters → return original array reference.
+    // Fast path: no active (valid) sync filters → return original array reference.
     if (syncEntries.length === 0) return data;
 
     const combineSync = filterMode === 'or' ? 'some' : 'every';
     return data.filter((row) =>
       syncEntries[combineSync](([key, value]) => {
         const fn = filterDefs[key];
-        if (!fn || isAsyncFn(fn)) return filterMode !== 'or'; // AND: skip stale (true); OR: no contribution (false)
+        if (!fn) return filterMode !== 'or'; // defensive: stale key slipped through; AND → skip, OR → no match
         return (fn as (row: TData, value: unknown) => boolean)(row, value);
       }),
     );
@@ -106,15 +114,28 @@ export function useFilter<TData, TDefs extends FilterDefs<TData>>(
     const syncFilteredChanged = prevSyncFilteredRef.current !== syncFiltered;
     prevSyncFilteredRef.current = syncFiltered;
 
+    // OR mode: async runs on `data`, not `syncFiltered`. If only syncFiltered changed
+    // (a sync filter was toggled), skip the async re-run — the result is still valid.
+    const asyncKey = asyncEntries.map(([k, v]) => `${k}:${JSON.stringify(v)}`).join('\x00');
+    const asyncInputChanged = prevDataRef.current !== data || prevAsyncKeyRef.current !== asyncKey;
+    prevDataRef.current = data;
+    prevAsyncKeyRef.current = asyncKey;
+
+    if (filterMode === 'or' && !asyncInputChanged) {
+      return; // syncFiltered changed but async inputs didn't — no re-run needed
+    }
+
     let cancelled = false;
     setIsLoading(true);
     setFilterError(null);
 
-    // Clear stale asyncResult when the underlying sync dataset changed — showing a
-    // result computed from a different set of rows would be incorrect.
+    // AND mode: clear stale asyncResult when the underlying sync dataset changed —
+    // showing a result computed from a different set of rows would be incorrect.
     // On async-only re-runs (same syncFiltered), preserve the previous result to
     // avoid a visible flash back to the sync-only view while the new fetch runs.
-    if (syncFilteredChanged) {
+    // OR mode: asyncResult is computed from `data` (not syncFiltered), so a sync
+    // filter change does NOT invalidate the async result — skip the clear.
+    if (syncFilteredChanged && filterMode !== 'or') {
       setAsyncResult(null);
     }
 
