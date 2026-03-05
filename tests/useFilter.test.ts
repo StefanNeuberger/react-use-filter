@@ -367,23 +367,18 @@ describe('useFilter — OR mode (sync)', () => {
     expect(result.current.filteredData).toHaveLength(0);
   });
 
-  it('OR mode with all three filters matching all rows returns full dataset', () => {
+  it('OR mode with two filters each matching a different row excludes rows matching neither', () => {
     const { result } = renderHook(() =>
       useFilter({ data, filterDefs, filterMode: 'or' }),
     );
     act(() => {
-      result.current.setFilter('status', 'active');   // Alice, Carol
-      result.current.setFilter('status', 'inactive'); // can't set same key twice...
-    });
-    // status filter is a single key so only the last value is active
-    // switching to a name filter that matches Bob to cover all three
-    act(() => {
-      result.current.resetAllFilters();
-      result.current.setFilter('name', 'alice');
-      result.current.setFilter('age', { max: 20 }); // Bob (17)
+      result.current.setFilter('name', 'alice'); // matches Alice
+      result.current.setFilter('age', { max: 20 }); // matches Bob (17)
     });
     // Alice via name, Bob via age — Carol matches neither
     expect(result.current.filteredData).toHaveLength(2);
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Alice');
+    expect(result.current.filteredData.map((r) => r.name)).toContain('Bob');
     expect(result.current.filteredData.map((r) => r.name)).not.toContain('Carol');
   });
 });
